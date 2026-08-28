@@ -610,25 +610,100 @@ switchTab("Farm")
 -- ============================================================
 
 -- AutoFarm loop
+-- ============================================================
+-- AUTOFARM — UNDERGROUND ARENA ONLY
+-- ============================================================
+
+local ARENA_MIN = Vector3.new(-500, -200, -500) -- подстрой под карту
+local ARENA_MAX = Vector3.new(500, 200, 500)
+local UNDERGROUND_Y = -10 -- глубина под землёй
+
+local function isInArena(pos)
+    return pos.X > ARENA_MIN.X and pos.X < ARENA_MAX.X
+       and pos.Z > ARENA_MIN.Z and pos.Z < ARENA_MAX.Z
+end
+
+local function isInLobby()
+    local char = lp.Character
+    if not char then return true end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return true end
+    -- если игрок не в зоне арены — считаем лобби
+    return not isInArena(hrp.Position)
+end
+
+local farmConnection
 RunService.Heartbeat:Connect(function()
     if not State.AutoFarm then return end
+
+    -- стоп если лобби
+    if isInLobby() then return end
+
     local char = lp.Character
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum or hum.Health <= 0 then return end
 
+    -- ищем ближайшего живого игрока на арене
     local closest, dist = nil, math.huge
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= lp and p.Character then
             local r = p.Character:FindFirstChild("HumanoidRootPart")
             local h = p.Character:FindFirstChildOfClass("Humanoid")
-            if r and h and h.Health > 0 then
+            if r and h and h.Health > 0 and isInArena(r.Position) then
                 local d = (r.Position - hrp.Position).Magnitude
                 if d < dist then dist = d; closest = r end
             end
         end
     end
+
+    if closest then
+        -- левитируем под землёй прямо под целью
+        local targetPos = Vector3.new(
+            closest.Position.X,
+            UNDERGROUND_Y, -- под землёй
+            closest.Position.Z
+        )
+
+        -- плавно двигаемся под цель
+        hrp.CFrame = CFrame.new(targetPos)
+
+        -- подлетаем к игроку на момент удара
+        task.spawn(function()
+            task.wait(0.05)
+            if not hrp or not hrp.Parent then return end
+            -- резкий подлёт вверх к игроку
+            hrp.CFrame = CFrame.new(
+                closest.Position + Vector3.new(
+                    math.random(-2, 2),
+                    0,
+                    math.random(-2, 2)
+                )
+            )
+
+            -- fire attack remotes
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+                or ReplicatedStorage:FindFirstChild("Events")
+                or ReplicatedStorage
+
+            for _, v in ipairs(remotes:GetDescendants()) do
+                if v:IsA("RemoteEvent") then
+                    local n = v.Name:lower()
+                    if n:find("attack") or n:find("hit") or n:find("stab") then
+                        pcall(function() v:FireServer(closest.Parent) end)
+                    end
+                end
+            end
+
+            task.wait(0.1)
+            -- обратно под землю
+            if hrp and hrp.Parent then
+                hrp.CFrame = CFrame.new(targetPos)
+            end
+        end)
+    end
+end)
 
     if closest then
         hrp.CFrame = CFrame.new(
@@ -654,29 +729,7 @@ RunService.Heartbeat:Connect(function()
     if not State.AutoBoss then return end
     local char = lp.Character
     if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    for _, v in ipairs(workspace:GetDescendants()) do
-        if v:IsA("Model") and v.Name:lower():find("boss") then
-            local r = v:FindFirstChild("HumanoidRootPart")
-            local h = v:FindFirstChildOfClass("Humanoid")
-            if r and h and h.Health > 0 then
-                hrp.CFrame = CFrame.new(r.Position + Vector3.new(3, 0, 0))
-                local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-                    or ReplicatedStorage:FindFirstChild("Events")
-                    or ReplicatedStorage
-                for _, rv in ipairs(remotes:GetDescendants()) do
-                    if rv:IsA("RemoteEvent") then
-                        local n = rv.Name:lower()
-                        if n:find("attack") or n:find("hit") then
-                            pcall(function() rv:FireServer(v) end)
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
+    local hrp = 
 
 -- Noclip loop
 RunService.Stepped:Connect(function()
